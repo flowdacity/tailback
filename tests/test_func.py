@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
 import uuid
-import time
 import math
 import asyncio
 import unittest
@@ -606,7 +605,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # job 2
         job_id = self._get_job_id()
-        start_time = str(generate_epoch())
+        str(generate_epoch())
         await self.queue.enqueue(
             payload=self._test_payload_2,
             interval=20000,
@@ -634,7 +633,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         )
         # job 2
         job_id = self._get_job_id()
-        start_time = str(generate_epoch())
+        str(generate_epoch())
         await self.queue.enqueue(
             payload=self._test_payload_2,
             interval=20000,
