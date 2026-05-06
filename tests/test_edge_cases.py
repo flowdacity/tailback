@@ -170,10 +170,25 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
             await fq.initialize()
             self.assertIsInstance(fq.redis_client(), FakeCluster)
             self.assertEqual(fq.redis_client().password, "cluster-password")
+            startup_node = fq.redis_client().startup_nodes[0]
+            self.assertEqual(startup_node.host, "127.0.0.1")
+            self.assertEqual(startup_node.port, 6379)
             await fq.close()
 
     def test_clustered_config_must_be_boolean(self):
         config = build_test_config(redis={"clustered": "true"})
+        with self.assertRaisesRegex(
+            FQException, "Invalid config: redis.clustered must be a boolean"
+        ):
+            FQ(config)
+
+    def test_unix_socket_clustered_config_must_be_boolean(self):
+        config = build_test_config(
+            redis={
+                "conn_type": "unix_sock",
+                "clustered": "true",
+            }
+        )
         with self.assertRaisesRegex(
             FQException, "Invalid config: redis.clustered must be a boolean"
         ):
@@ -192,6 +207,16 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
             "Invalid config: fq.job_expire_interval must be a positive integer",
         ):
             FQ(config)
+
+    def test_invalid_redis_port_range_raises(self):
+        for port in (0, -1, 65536):
+            with self.subTest(port=port):
+                config = build_test_config(redis={"port": port})
+                with self.assertRaisesRegex(
+                    FQException,
+                    "Invalid config: redis.port must be an integer between 1 and 65535",
+                ):
+                    FQ(config)
 
     async def test_dequeue_payload_none(self):
         """Covers dequeue branch where payload is None (queue.py line 212)."""

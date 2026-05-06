@@ -4,6 +4,7 @@
 from redis import Redis as SyncRedis
 from redis import RedisCluster as SyncRedisCluster
 from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 
 from fq.exceptions import FQException
@@ -20,10 +21,7 @@ def create_async_redis_client(redis_config):
     if redis_config.conn_type == "tcp_sock":
         if redis_config.clustered:
             startup_nodes = [
-                {
-                    "host": redis_config.host,
-                    "port": int(redis_config.port),
-                }
+                AsyncClusterNode(redis_config.host, int(redis_config.port)),
             ]
             return AsyncRedisCluster(
                 startup_nodes=startup_nodes,

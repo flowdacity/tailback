@@ -1,27 +1,27 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
-
-
-LUA_SCRIPT_NAMES = ("enqueue", "dequeue", "finish", "interval", "requeue", "metrics")
+from typing import Any
 
 
 @dataclass(frozen=True)
 class LuaScripts:
-    enqueue: object
-    dequeue: object
-    finish: object
-    interval: object
-    requeue: object
-    metrics: object
+    enqueue: Any
+    dequeue: Any
+    finish: Any
+    interval: Any
+    requeue: Any
+    metrics: Any
 
     @classmethod
     def register(cls, redis_client):
         registered_scripts = {
-            script_name: redis_client.register_script(cls._read_script(script_name))
-            for script_name in LUA_SCRIPT_NAMES
+            script_field.name: redis_client.register_script(
+                cls._read_script(script_field.name)
+            )
+            for script_field in fields(cls)
         }
         return cls(**registered_scripts)
 

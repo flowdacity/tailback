@@ -130,11 +130,18 @@ def _validate_fq_config(fq_config):
 
 
 def _validate_connection_config(redis_config):
+    _validate_clustered_config(redis_config)
+
     if redis_config["conn_type"] == "unix_sock":
         _validate_unix_socket_config(redis_config)
         return
 
     _validate_tcp_socket_config(redis_config)
+
+
+def _validate_clustered_config(redis_config):
+    if "clustered" in redis_config and not isinstance(redis_config["clustered"], bool):
+        raise FQException("Invalid config: redis.clustered must be a boolean")
 
 
 def _validate_unix_socket_config(redis_config):
@@ -154,8 +161,10 @@ def _validate_tcp_socket_config(redis_config):
     if not _is_int_not_bool(port):
         raise FQException("Invalid config: redis.port must be an integer")
 
-    if "clustered" in redis_config and not isinstance(redis_config["clustered"], bool):
-        raise FQException("Invalid config: redis.clustered must be a boolean")
+    if port < 1 or port > 65535:
+        raise FQException(
+            "Invalid config: redis.port must be an integer between 1 and 65535"
+        )
 
 
 def _validate_optional_redis_config(redis_config):

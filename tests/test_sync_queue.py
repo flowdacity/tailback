@@ -294,12 +294,13 @@ class SyncFQTest(unittest.TestCase):
             sync_queue = FQ(config)
 
             await async_queue.initialize()
-            sync_queue.initialize()
+            await asyncio.to_thread(sync_queue.initialize)
             await async_queue._r.flushdb()
 
             try:
                 sync_job_id = self._job_id()
-                sync_queue.enqueue(
+                await asyncio.to_thread(
+                    sync_queue.enqueue,
                     payload={"source": "sync"},
                     interval=1,
                     job_id=sync_job_id,
@@ -338,7 +339,10 @@ class SyncFQTest(unittest.TestCase):
                     queue_type=self.queue_type,
                 )
                 await asyncio.sleep(0.01)
-                async_job = sync_queue.dequeue(queue_type=self.queue_type)
+                async_job = await asyncio.to_thread(
+                    sync_queue.dequeue,
+                    queue_type=self.queue_type,
+                )
                 self.assertEqual(async_job["status"], "success")
                 self.assertEqual(
                     set(async_job),
@@ -353,7 +357,8 @@ class SyncFQTest(unittest.TestCase):
                 self.assertEqual(async_job["job_id"], async_job_id)
                 self.assertEqual(async_job["payload"], {"source": "async"})
                 self.assertEqual(
-                    sync_queue.finish(
+                    await asyncio.to_thread(
+                        sync_queue.finish,
                         queue_type=self.queue_type,
                         queue_id=async_job["queue_id"],
                         job_id=async_job["job_id"],
@@ -361,8 +366,9 @@ class SyncFQTest(unittest.TestCase):
                     {"status": "success"},
                 )
             finally:
-                sync_queue._r.flushdb()
-                sync_queue.close()
+                if sync_queue._r is not None:
+                    await asyncio.to_thread(sync_queue._r.flushdb)
+                await asyncio.to_thread(sync_queue.close)
                 await async_queue.close()
 
         asyncio.run(scenario())
