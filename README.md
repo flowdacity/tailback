@@ -4,13 +4,13 @@
 Flowdacity Queue
 ================
 
-Flowdacity Queue (FQ) is a rate-limited job queue built on Redis with supported async and sync APIs. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
+Flowdacity Queue (FQ) is a rate-limited job queue built on Redis. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
 
 ## Features
 
 - Per-queue rate limiting using millisecond intervals.
-- Async and sync APIs backed by Redis clients from redis-py.
-- Lua scripts for predictable queue behavior across both APIs.
+- Async and sync interfaces backed by Redis clients from redis-py.
+- Lua scripts for predictable queue behavior.
 - Automatic retries with configurable limits (including infinite retries).
 - Metrics for enqueue/dequeue counts and queue lengths.
 - Works with TCP or Unix socket Redis deployments and supports Redis Cluster.
@@ -61,9 +61,9 @@ config = {
 > unixsocketperm 755
 > ```
 
-## Async API
+## Async Usage
 
-The top-level namespace is async-first:
+Import `FQ` from the top-level package:
 
 ```python
 from fq import FQ
@@ -121,9 +121,9 @@ async def main():
 asyncio.run(main())
 ```
 
-## Sync API
+## Sync Usage
 
-The sync API is available from the `fq.sync` namespace and supports the same queue operations without `await`:
+Import `FQ` from `fq.sync`:
 
 ```python
 import uuid
@@ -178,7 +178,7 @@ fq.close()
 - `await fq.metrics()` — global metrics; pass `queue_type` and/or `queue_id` for scoped stats and queue length.
 - `await fq.clear_queue(queue_type="sms", queue_id="user001", purge_all=True)` — drop queued jobs and their payload/interval metadata.
 
-For sync code, use the same method names without `await`: `fq.requeue()`, `fq.interval(...)`, `fq.metrics()`, and `fq.clear_queue(...)`.
+The same operations are available from `fq.sync.FQ` without `await`.
 
 ## Development
 

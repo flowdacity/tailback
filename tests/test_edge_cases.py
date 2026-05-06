@@ -4,6 +4,7 @@
 
 import unittest
 from contextlib import suppress
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fq import FQ
@@ -134,7 +135,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
             FQ("does-not-exist.conf")
 
     async def test_initialize_fails_fast_on_bad_redis(self):
-        with patch("fq.queue.Redis", FakeRedisConnectionFailure):
+        with patch("fq.redis.AsyncRedis", FakeRedisConnectionFailure):
             fq = FQ(self.config)
             with self.assertRaisesRegex(FQException, "Failed to connect to Redis"):
                 await fq.initialize()
@@ -144,7 +145,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         config = build_test_config(
             redis={"key_prefix": "test_fq_cluster", "clustered": True}
         )
-        with patch("fq.queue.RedisCluster", FakeCluster):
+        with patch("fq.redis.AsyncRedisCluster", FakeCluster):
             fq = FQ(config)
             await fq.initialize()
             self.assertIsInstance(fq.redis_client(), FakeCluster)
@@ -177,7 +178,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.fq_instance = fq
         await fq.initialize()
         fake_dequeue = FakeLuaDequeue()
-        fq._lua_dequeue = fake_dequeue
+        fq._scripts = SimpleNamespace(dequeue=fake_dequeue)
         result = await fq.dequeue()
         self.assertEqual(result["status"], "failure")
         self.assertTrue(fake_dequeue.called)
@@ -201,12 +202,14 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def test_deep_status_calls_set(self):
         """Covers deep_status (queue.py line 420)."""
         fq = FQ(self.config)
-        fq._key_prefix = fq.config["redis"]["key_prefix"]
         fq._r = FakeRedisForDeepStatus()
         await fq.deep_status()
         self.assertEqual(
             fq._r.key_set,
-            ("fq:deep_status:{}".format(fq._key_prefix), "sharq_deep_status"),
+            (
+                "fq:deep_status:{}".format(fq.config.redis.key_prefix),
+                "sharq_deep_status",
+            ),
         )
 
     def test_is_valid_identifier_non_string(self):
@@ -218,7 +221,6 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     async def test_clear_queue_purge_all_with_mixed_job_ids(self):
         """Covers purge_all loop branches (queue.py lines 463-468, 474-479)."""
         fq = FQ(self.config)
-        fq._key_prefix = fq.config["redis"]["key_prefix"]
         fq._r = FakeRedisForClear()
         response = await fq.clear_queue("qt", "qid", purge_all=True)
         self.assertEqual(response["status"], "Success")

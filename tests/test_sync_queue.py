@@ -39,10 +39,10 @@ class SyncFQTest(unittest.TestCase):
 
     def test_initialize_close_and_reload_scripts(self):
         self.assertIs(self.queue.redis_client(), self.queue._r)
-        self.assertIsNotNone(self.queue._lua_enqueue)
+        self.assertIsNotNone(self.queue._scripts.enqueue)
 
         self.queue.reload_lua_scripts()
-        self.assertIsNotNone(self.queue._lua_enqueue)
+        self.assertIsNotNone(self.queue._scripts.enqueue)
         self.assertTrue(self.queue.deep_status())
 
         self.queue.close()
@@ -308,6 +308,16 @@ class SyncFQTest(unittest.TestCase):
                 )
                 sync_job = await async_queue.dequeue(queue_type=self.queue_type)
                 self.assertEqual(sync_job["status"], "success")
+                self.assertEqual(
+                    set(sync_job),
+                    {
+                        "status",
+                        "queue_id",
+                        "job_id",
+                        "payload",
+                        "requeues_remaining",
+                    },
+                )
                 self.assertEqual(sync_job["job_id"], sync_job_id)
                 self.assertEqual(sync_job["payload"], {"source": "sync"})
                 self.assertEqual(
@@ -330,6 +340,16 @@ class SyncFQTest(unittest.TestCase):
                 await asyncio.sleep(0.01)
                 async_job = sync_queue.dequeue(queue_type=self.queue_type)
                 self.assertEqual(async_job["status"], "success")
+                self.assertEqual(
+                    set(async_job),
+                    {
+                        "status",
+                        "queue_id",
+                        "job_id",
+                        "payload",
+                        "requeues_remaining",
+                    },
+                )
                 self.assertEqual(async_job["job_id"], async_job_id)
                 self.assertEqual(async_job["payload"], {"source": "async"})
                 self.assertEqual(

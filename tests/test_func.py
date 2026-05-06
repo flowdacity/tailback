@@ -1740,7 +1740,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         
         # Verify initialization succeeded
         self.assertIsNotNone(fq._r)
-        self.assertIsNotNone(fq._lua_enqueue)
+        self.assertIsNotNone(fq._scripts.enqueue)
         
         # Cleanup
         await fq.close()
@@ -1831,7 +1831,10 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             return mock_redis_instance
 
         # Patch Redis to intercept the initialization
-        with unittest.mock.patch("fq.queue.Redis", side_effect=mock_redis_constructor):
+        with unittest.mock.patch(
+            "fq.redis.AsyncRedis",
+            side_effect=mock_redis_constructor,
+        ):
             fq = FQ(config)
             await fq.initialize()
 
