@@ -1,13 +1,10 @@
 # -*- coding: utf-8 -*-
-# Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
-#  Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
+# Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
 
-import asyncio
-
-from redis.asyncio import Redis
-from redis.asyncio.cluster import RedisCluster
+from redis import Redis, RedisCluster
 
 from fq.core import (
+    decode_redis_value,
     enqueue_script_args,
     format_dequeue_response,
     format_metrics_counts,
@@ -24,28 +21,18 @@ from fq.core import (
     validate_interval_arguments,
     validate_metrics_arguments,
 )
-from fq.exceptions import FQException, BadArgumentException
+from fq.exceptions import BadArgumentException, FQException
 
 
 class FQ(object):
-    """The FQ object is the core of this queue.
-    FQ does the following.
-
-        1. Accepts structured configuration.
-        2. Initializes the queue.
-        3. Exposes functions to interact with the queue.
-    """
+    """Synchronous FQ API backed by redis-py's synchronous client."""
 
     def __init__(self, config):
-        """Construct a FQ object by doing the following.
-        1. Store the queue configuration.
-        2. Validate the config shape.
-        """
-        self._r = None  # redis client placeholder
+        self._r = None
         self.config = normalize_config(config)
 
-    async def initialize(self):
-        """Async initializer to set up redis and lua scripts."""
+    def initialize(self):
+        """Set up the synchronous Redis client and Lua scripts."""
         fq_config = self.config["fq"]
         redis_config = self.config["redis"]
 
@@ -67,14 +54,9 @@ class FQ(object):
                 isclustered = redis_config["clustered"]
 
             if isclustered:
-                startup_nodes = [
-                    {
-                        "host": redis_config["host"],
-                        "port": int(redis_config["port"]),
-                    }
-                ]
                 self._r = RedisCluster(
-                    startup_nodes=startup_nodes,
+                    host=redis_config["host"],
+                    port=int(redis_config["port"]),
                     decode_responses=False,
                     socket_timeout=5,
                 )
@@ -88,11 +70,11 @@ class FQ(object):
         else:
             raise FQException("Unknown redis conn_type: %s" % redis_connection_type)
 
-        await self._validate_redis_connection()
+        self._validate_redis_connection()
         self._load_lua_scripts()
 
-    async def _validate_redis_connection(self):
-        """Ping redis once to surface bad connection details early."""
+    def _validate_redis_connection(self):
+        """Ping Redis once to surface bad connection details early."""
         if self._r is None:
             raise FQException("Redis client is not initialized")
 
@@ -101,7 +83,7 @@ class FQ(object):
             return
 
         try:
-            result = await ping()
+            result = ping()
         except Exception as exc:
             raise FQException("Failed to connect to Redis: %s" % exc) from exc
 
@@ -112,14 +94,14 @@ class FQ(object):
         return self._r
 
     def _load_lua_scripts(self):
-        """Loads all lua scripts required by FQ."""
+        """Loads all Lua scripts required by FQ."""
         load_lua_scripts(self, self._r)
 
     def reload_lua_scripts(self):
-        """Lets user reload the lua scripts in run time."""
+        """Lets user reload the Lua scripts at run time."""
         self._load_lua_scripts()
 
-    async def enqueue(
+    def enqueue(
         self,
         payload,
         interval,
@@ -128,9 +110,7 @@ class FQ(object):
         queue_type="default",
         requeue_limit=None,
     ):
-        """Enqueues the job into the specified queue_id
-        of a particular queue_type
-        """
+        """Enqueue a job into the specified queue_id and queue_type."""
         serialized_payload, requeue_limit = validate_enqueue_arguments(
             payload,
             interval,
@@ -149,120 +129,80 @@ class FQ(object):
             interval,
             requeue_limit,
         )
-        await self._lua_enqueue(keys=keys, args=args)
+        self._lua_enqueue(keys=keys, args=args)
         return {"status": "queued"}
 
-    async def dequeue(self, queue_type="default"):
-        """Dequeues a job from any of the ready queues
-        based on the queue_type. If no job is ready,
-        returns a failure status.
-        """
+    def dequeue(self, queue_type="default"):
+        """Dequeue a ready job for the queue_type, or return failure."""
         validate_dequeue_arguments(queue_type)
 
         timestamp = str(generate_epoch())
-
         keys = [self._key_prefix, queue_type]
         args = [timestamp, self._job_expire_interval]
 
-        dequeue_response = await self._lua_dequeue(keys=keys, args=args)
+        dequeue_response = self._lua_dequeue(keys=keys, args=args)
         return format_dequeue_response(dequeue_response)
 
-    async def finish(self, job_id, queue_id, queue_type="default"):
-        """Marks any dequeued job as *completed successfully*.
-        Any job which gets a finish will be treated as complete
-        and will be removed from the FQ.
-        """
+    def finish(self, job_id, queue_id, queue_type="default"):
+        """Mark a dequeued job as completed successfully."""
         validate_finish_arguments(job_id, queue_id, queue_type)
 
         keys = [self._key_prefix, queue_type]
-
         args = [queue_id, job_id]
 
-        finish_response = await self._lua_finish(keys=keys, args=args)
+        finish_response = self._lua_finish(keys=keys, args=args)
         if finish_response == 0:
-            # the finish failed.
             return {"status": "failure"}
 
         return {"status": "success"}
 
-    async def interval(self, interval, queue_id, queue_type="default"):
-        """Updates the interval for a specific queue_id
-        of a particular queue type.
-        """
+    def interval(self, interval, queue_id, queue_type="default"):
+        """Update the interval for a queue_id and queue_type."""
         validate_interval_arguments(interval, queue_id, queue_type)
 
-        # generate the interval key
         interval_hmap_key = "%s:interval" % self._key_prefix
         interval_queue_key = "%s:%s" % (queue_type, queue_id)
         keys = [interval_hmap_key, interval_queue_key]
-
         args = [interval]
-        interval_response = await self._lua_interval(keys=keys, args=args)
-        if interval_response == 0:
-            # the queue with the id and type does not exist.
-            return {"status": "failure"}
-        else:
-            return {"status": "success"}
 
-    async def requeue(self):
-        """Re-queues any expired job (one which does not get an expire
-        before the job_expiry_interval) back into their respective queue.
-        This function has to be run at specified intervals to ensure the
-        expired jobs are re-queued back.
-        """
+        interval_response = self._lua_interval(keys=keys, args=args)
+        if interval_response == 0:
+            return {"status": "failure"}
+        return {"status": "success"}
+
+    def requeue(self):
+        """Re-queue expired active jobs back into their ready queues."""
         timestamp = str(generate_epoch())
-        # get all queue_types and requeue one by one.
-        # not recommended to do this entire process
-        # in lua as it might take long and block other
-        # enqueues and dequeues.
-        active_queue_type_list = await self._r.smembers(
+        active_queue_type_list = self._r.smembers(
             "%s:active:queue_type" % self._key_prefix
         )
         for queue_type in active_queue_type_list:
-            # requeue all expired jobs in all queue types.
-
-            queue_type = queue_type.decode("utf-8")
-
+            queue_type = decode_redis_value(queue_type)
             keys = [self._key_prefix, queue_type]
-
             args = [timestamp]
-            job_discard_list = await self._lua_requeue(keys=keys, args=args)
-            # discard the jobs if any
+            job_discard_list = self._lua_requeue(keys=keys, args=args)
             for job in job_discard_list:
-                queue_id, job_id = job.decode("utf-8").split(":")
-                # explicitly finishing a job
-                # is nothing but discard.
-                await self.finish(
-                    job_id=job_id, queue_id=queue_id, queue_type=queue_type
-                )
+                queue_id, job_id = decode_redis_value(job).split(":")
+                self.finish(job_id=job_id, queue_id=queue_id, queue_type=queue_type)
 
-    async def metrics(self, queue_type=None, queue_id=None):
-        """Provides a way to get statistics about various parameters like,
-        * global enqueue / dequeue rates per min.
-        * per queue enqueue / dequeue rates per min.
-        * queue length of each queue.
-        * list of queue ids for each queue type.
-        """
+    def metrics(self, queue_type=None, queue_id=None):
+        """Return global, queue-type, or queue-specific metrics."""
         validate_metrics_arguments(queue_type, queue_id)
 
         response = {"status": "failure"}
         if not queue_type and not queue_id:
-            # return global stats.
-            # list of active queue types (ready + active)
-            active_queue_types = await self._r.smembers(
+            active_queue_types = self._r.smembers(
                 "%s:active:queue_type" % self._key_prefix
             )
-            ready_queue_types = await self._r.smembers(
+            ready_queue_types = self._r.smembers(
                 "%s:ready:queue_type" % self._key_prefix
             )
             queue_types = format_queue_types(active_queue_types, ready_queue_types)
-            # global rates for past 10 minutes
+
             timestamp = str(generate_epoch())
             keys = [self._key_prefix]
             args = [timestamp]
-            enqueue_details, dequeue_details = await self._lua_metrics(
-                keys=keys, args=args
-            )
+            enqueue_details, dequeue_details = self._lua_metrics(keys=keys, args=args)
             enqueue_counts, dequeue_counts = format_metrics_counts(
                 enqueue_details, dequeue_details
             )
@@ -277,32 +217,23 @@ class FQ(object):
             )
             return response
         elif queue_type and not queue_id:
-            # return list of queue_ids.
-            # get data from two sorted sets in a transaction
             pipe = self._r.pipeline()
             pipe.zrange("%s:%s" % (self._key_prefix, queue_type), 0, -1)
             pipe.zrange("%s:%s:active" % (self._key_prefix, queue_type), 0, -1)
-            ready_queues, active_queues = await pipe.execute()
-            # extract the queue_ids from the queue_id:job_id string
+            ready_queues, active_queues = pipe.execute()
             queue_list = format_queue_ids(ready_queues, active_queues)
             response.update({"status": "success", "queue_ids": queue_list})
             return response
         elif queue_type and queue_id:
-            # return specific details.
-            # queue specific rates for past 10 minutes
             timestamp = str(generate_epoch())
             keys = ["%s:%s:%s" % (self._key_prefix, queue_type, queue_id)]
             args = [timestamp]
-            enqueue_details, dequeue_details = await self._lua_metrics(
-                keys=keys, args=args
-            )
-
+            enqueue_details, dequeue_details = self._lua_metrics(keys=keys, args=args)
             enqueue_counts, dequeue_counts = format_metrics_counts(
                 enqueue_details, dequeue_details
             )
 
-            # get the queue length for the job queue
-            queue_length = await self._r.llen(
+            queue_length = self._r.llen(
                 "%s:%s:%s" % (self._key_prefix, queue_type, queue_id)
             )
 
@@ -322,27 +253,22 @@ class FQ(object):
 
         return response
 
-    async def deep_status(self):
+    def deep_status(self):
         """
-        To check the availability of redis. If redis is down get will throw exception
+        Check Redis availability. If Redis is down, set() will raise.
         :return: value or None
         """
-        return await self._r.set(
+        return self._r.set(
             "fq:deep_status:{}".format(self._key_prefix), "sharq_deep_status"
         )
 
-    async def clear_queue(self, queue_type=None, queue_id=None, purge_all=False):
-        """clear the all entries in queue with particular queue_id
-        and queue_type. It takes an optional argument,
-        purge_all : if True, then it will remove the related resources
-        from the redis.
-        """
+    def clear_queue(self, queue_type=None, queue_id=None, purge_all=False):
+        """Clear entries in a queue and optionally purge related resources."""
         validate_clear_queue_arguments(queue_type, queue_id)
 
         response = {"status": "Failure", "message": "No queued calls found"}
-        # remove from the primary sorted set
         primary_set = "{}:{}".format(self._key_prefix, queue_type)
-        queued_status = await self._r.zrem(primary_set, queue_id)
+        queued_status = self._r.zrem(primary_set, queue_id)
         if queued_status:
             response.update(
                 {
@@ -350,32 +276,24 @@ class FQ(object):
                     "message": "Successfully removed all queued calls",
                 }
             )
-        # do a full cleanup of reources
-        # although this is not necessary as we don't remove resources
-        # while dequeue operation
+
         job_queue_list = "{}:{}:{}".format(self._key_prefix, queue_type, queue_id)
         if queued_status and purge_all:
-            job_list = await self._r.lrange(job_queue_list, 0, -1)
+            job_list = self._r.lrange(job_queue_list, 0, -1)
             pipe = self._r.pipeline()
-            # clear the payload data for job_uuid
             for job_uuid in job_list:
                 if job_uuid is None:
                     continue
-                if isinstance(job_uuid, bytes):
-                    job_uuid_str = job_uuid.decode("utf-8")
-                else:
-                    job_uuid_str = job_uuid
+                job_uuid_str = decode_redis_value(job_uuid)
                 payload_set = "{}:payload".format(self._key_prefix)
                 job_payload_key = "{}:{}:{}".format(queue_type, queue_id, job_uuid_str)
                 pipe.hdel(payload_set, job_payload_key)
 
-            # clear job request interval
             interval_set = "{}:interval".format(self._key_prefix)
             job_interval_key = "{}:{}".format(queue_type, queue_id)
             pipe.hdel(interval_set, job_interval_key)
-            # clear job_queue_list
             pipe.delete(job_queue_list)
-            await pipe.execute()
+            pipe.execute()
             response.update(
                 {
                     "status": "Success",
@@ -383,61 +301,34 @@ class FQ(object):
                 }
             )
         else:
-            # always delete the job queue list
-            await self._r.delete(job_queue_list)
+            self._r.delete(job_queue_list)
         return response
 
-    async def get_queue_length(self, queue_type, queue_id):
+    def get_queue_length(self, queue_type, queue_id):
         """
-        Return the current length present in redis key of type list
-        Redis key structure : key_prefix : queue_type : queue_id
+        Return the current Redis list length for key_prefix:queue_type:queue_id.
         """
-
         validate_get_queue_length_arguments(queue_type, queue_id)
 
         redis_key = self._key_prefix + ":" + queue_type + ":" + queue_id
-        current_queue_length = await self._r.llen(redis_key)
-        return current_queue_length
+        return self._r.llen(redis_key)
 
-    async def close(self):
-        """
-        Cleanly close the underlying Redis client / connection pool.
-
-        This is intended to be called by tests or by application shutdown
-        hooks to avoid ResourceWarning: unclosed <socket.socket ...>.
-        """
+    def close(self):
+        """Close the underlying synchronous Redis client."""
         if self._r is None:
             return
 
         conn = self._r
-
-        # Prefer the asyncio-style aclose() if available (redis-py >= 4.2+)
-        aclose = getattr(conn, "aclose", None)
-        if callable(aclose):
-            await aclose()
+        close = getattr(conn, "close", None)
+        if callable(close):
+            close()
             self._r = None
             return
 
-        # Older / alternate API: close() [+ wait_closed()]
-        close = getattr(conn, "close", None)
-        if callable(close):
-            maybe_coro = close()
-            if asyncio.iscoroutine(maybe_coro):
-                await maybe_coro
-
-        wait_closed = getattr(conn, "wait_closed", None)
-        if callable(wait_closed):
-            maybe_coro = wait_closed()
-            if asyncio.iscoroutine(maybe_coro):
-                await maybe_coro
-
-        # As a final fallback, disconnect the connection pool
         pool = getattr(conn, "connection_pool", None)
         if pool is not None:
             disconnect = getattr(pool, "disconnect", None)
             if callable(disconnect):
-                maybe_coro = disconnect()
-                if asyncio.iscoroutine(maybe_coro):
-                    await maybe_coro
+                disconnect()
 
         self._r = None

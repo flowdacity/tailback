@@ -4,12 +4,13 @@
 Flowdacity Queue
 ================
 
-Flowdacity Queue (FQ) is an asyncio-friendly, rate-limited job queue built on Redis. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
+Flowdacity Queue (FQ) is a rate-limited job queue built on Redis with supported async and sync APIs. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
 
 ## Features
 
 - Per-queue rate limiting using millisecond intervals.
-- Async Redis client with Lua scripts for predictable behavior.
+- Async and sync APIs backed by Redis clients from redis-py.
+- Lua scripts for predictable queue behavior across both APIs.
 - Automatic retries with configurable limits (including infinite retries).
 - Metrics for enqueue/dequeue counts and queue lengths.
 - Works with TCP or Unix socket Redis deployments and supports Redis Cluster.
@@ -60,7 +61,13 @@ config = {
 > unixsocketperm 755
 > ```
 
-## Quickstart
+## Async API
+
+The top-level namespace is async-first:
+
+```python
+from fq import FQ
+```
 
 ```python
 import asyncio
@@ -114,12 +121,64 @@ async def main():
 asyncio.run(main())
 ```
 
-Common operations:
+## Sync API
+
+The sync API is available from the `fq.sync` namespace and supports the same queue operations without `await`:
+
+```python
+import uuid
+from fq.sync import FQ
+
+
+config = {
+    "fq": {
+        "job_expire_interval": 5000,
+        "job_requeue_interval": 5000,
+        "default_job_requeue_limit": -1,
+    },
+    "redis": {
+        "db": 0,
+        "key_prefix": "queue_server",
+        "conn_type": "tcp_sock",
+        "host": "127.0.0.1",
+        "port": 6379,
+        "password": "",
+        "clustered": False,
+        "unix_socket_path": "/tmp/redis.sock",
+    },
+}
+
+fq = FQ(config)
+fq.initialize()
+
+job_id = str(uuid.uuid4())
+fq.enqueue(
+    payload={"message": "hello, world"},
+    interval=1000,
+    job_id=job_id,
+    queue_id="user001",
+    queue_type="sms",
+)
+
+job = fq.dequeue(queue_type="sms")
+if job["status"] == "success":
+    fq.finish(
+        queue_type="sms",
+        queue_id=job["queue_id"],
+        job_id=job["job_id"],
+    )
+
+fq.close()
+```
+
+## Common Operations
 
 - `await fq.requeue()` — move expired jobs back onto their queues.
 - `await fq.interval(interval=5000, queue_id="user001", queue_type="sms")` — change a queue’s rate limit on the fly.
 - `await fq.metrics()` — global metrics; pass `queue_type` and/or `queue_id` for scoped stats and queue length.
 - `await fq.clear_queue(queue_type="sms", queue_id="user001", purge_all=True)` — drop queued jobs and their payload/interval metadata.
+
+For sync code, use the same method names without `await`: `fq.requeue()`, `fq.interval(...)`, `fq.metrics()`, and `fq.clear_queue(...)`.
 
 ## Development
 
