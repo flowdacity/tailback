@@ -1,5 +1,5 @@
 [project]
-name = "flowdacity-queue"
+name = "tailback"
 dynamic = ["version"]
 description = "A simple Redis-based job queue system."
 readme = "README.md"
@@ -24,11 +24,11 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/fq"]
+packages = ["src/tailback"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "src/fq",
+  "src/tailback",
   "README.md",
   "LICENSE.txt",
 ]

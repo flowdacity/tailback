@@ -1,4 +1,4 @@
 # Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
-from .queue import FQ
+from .queue import Tailback
 
-__all__ = ["FQ"]
+__all__ = ["Tailback"]

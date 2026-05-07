@@ -2,9 +2,9 @@
 # Copyright (c) 2014 Plivo Team. See LICENSE.txt for details.
 
 
-class FQException(Exception):
+class TailbackException(Exception):
     pass
 
 
-class BadArgumentException(FQException):
+class BadArgumentException(TailbackException):
     pass

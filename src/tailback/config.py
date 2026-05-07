@@ -4,8 +4,8 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from fq.exceptions import FQException
-from fq.utils import is_valid_interval, is_valid_requeue_limit
+from tailback.exceptions import TailbackException
+from tailback.utils import is_valid_interval, is_valid_requeue_limit
 
 
 REDIS_CONN_TYPES = {"tcp_sock", "unix_sock"}
@@ -41,13 +41,13 @@ class RedisConfig:
     def _validate_required(cls, config):
         conn_type = cls._require_value(config, "conn_type")
         if conn_type not in REDIS_CONN_TYPES:
-            raise FQException(
+            raise TailbackException(
                 "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'"
             )
 
         db = cls._require_value(config, "db")
         if not cls._is_int_not_bool(db):
-            raise FQException("Invalid config: redis.db must be an integer")
+            raise TailbackException("Invalid config: redis.db must be an integer")
 
     @classmethod
     def _validate_connection(cls, config):
@@ -62,13 +62,13 @@ class RedisConfig:
     @classmethod
     def _validate_clustered(cls, config):
         if "clustered" in config and not isinstance(config["clustered"], bool):
-            raise FQException("Invalid config: redis.clustered must be a boolean")
+            raise TailbackException("Invalid config: redis.clustered must be a boolean")
 
     @classmethod
     def _validate_unix_socket(cls, config):
         unix_socket_path = cls._require_value(config, "unix_socket_path")
         if not cls._is_non_empty_string(unix_socket_path):
-            raise FQException(
+            raise TailbackException(
                 "Invalid config: redis.unix_socket_path must be a non-empty string"
             )
 
@@ -76,14 +76,14 @@ class RedisConfig:
     def _validate_tcp_socket(cls, config):
         host = cls._require_value(config, "host")
         if not cls._is_non_empty_string(host):
-            raise FQException("Invalid config: redis.host must be a non-empty string")
+            raise TailbackException("Invalid config: redis.host must be a non-empty string")
 
         port = cls._require_value(config, "port")
         if not cls._is_int_not_bool(port):
-            raise FQException("Invalid config: redis.port must be an integer")
+            raise TailbackException("Invalid config: redis.port must be an integer")
 
         if port < 1 or port > 65535:
-            raise FQException(
+            raise TailbackException(
                 "Invalid config: redis.port must be an integer between 1 and 65535"
             )
 
@@ -91,12 +91,12 @@ class RedisConfig:
     def _validate_optional(cls, config):
         if "password" in config and config["password"] is not None:
             if not isinstance(config["password"], str):
-                raise FQException("Invalid config: redis.password must be a string")
+                raise TailbackException("Invalid config: redis.password must be a string")
 
     @staticmethod
     def _require_value(config, option_name):
         if option_name not in config:
-            raise FQException("Missing config: redis.%s" % option_name)
+            raise TailbackException("Missing config: redis.%s" % option_name)
 
         return config[option_name]
 
@@ -131,21 +131,21 @@ class QueueConfig:
     def _validate_required(cls, config):
         key_prefix = cls._require_value(config, "key_prefix")
         if not cls._is_non_empty_string(key_prefix):
-            raise FQException(
+            raise TailbackException(
                 "Invalid config: queue.key_prefix must be a non-empty string"
             )
 
         for option_name in ("job_expire_interval", "job_requeue_interval"):
             value = cls._require_value(config, option_name)
             if not is_valid_interval(value):
-                raise FQException(
+                raise TailbackException(
                     "Invalid config: queue.%s must be a positive integer"
                     % option_name
                 )
 
         default_requeue_limit = cls._require_value(config, "default_job_requeue_limit")
         if not is_valid_requeue_limit(default_requeue_limit):
-            raise FQException(
+            raise TailbackException(
                 "Invalid config: "
                 "queue.default_job_requeue_limit must be an integer >= -1"
             )
@@ -153,7 +153,7 @@ class QueueConfig:
     @staticmethod
     def _require_value(config, option_name):
         if option_name not in config:
-            raise FQException("Missing config: queue.%s" % option_name)
+            raise TailbackException("Missing config: queue.%s" % option_name)
 
         return config[option_name]
 
@@ -163,7 +163,7 @@ class QueueConfig:
 
 
 @dataclass(frozen=True)
-class FQConfig:
+class TailbackConfig:
     redis: RedisConfig
     queue: QueueConfig
 
@@ -180,12 +180,12 @@ class FQConfig:
     @staticmethod
     def _normalize_sections(config):
         if not isinstance(config, Mapping):
-            raise FQException("Config must be a mapping with redis and queue sections")
+            raise TailbackException("Config must be a mapping with redis and queue sections")
 
         normalized = {}
         for section_name, section_values in config.items():
             if not isinstance(section_values, Mapping):
-                raise FQException(
+                raise TailbackException(
                     "Config section '%s' must be a mapping" % section_name
                 )
 
@@ -198,4 +198,4 @@ class FQConfig:
     @staticmethod
     def _require_sections(config):
         if "redis" not in config or "queue" not in config:
-            raise FQException("Config missing required sections: redis, queue")
+            raise TailbackException("Config missing required sections: redis, queue")

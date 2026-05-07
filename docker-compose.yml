@@ -1,7 +1,7 @@
 services:
   redis:
     image: redis:7-alpine
-    container_name: fq-redis
+    container_name: tailback-redis
     restart: unless-stopped
     ports:
       - "6379:6379"

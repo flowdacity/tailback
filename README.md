@@ -1,19 +1,19 @@
-[![Run tests and upload coverage](https://github.com/flowdacity/queue-engine/actions/workflows/tests.yml/badge.svg)](https://github.com/flowdacity/queue-engine/actions/workflows/tests.yml)
-[![codecov](https://codecov.io/github/flowdacity/queue-engine/graph/badge.svg?token=70BDRZY956)](https://codecov.io/github/flowdacity/queue-engine)
+[![Run tests and upload coverage](https://github.com/flowdacity/tailback/actions/workflows/tests.yml/badge.svg)](https://github.com/flowdacity/tailback/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/github/flowdacity/tailback/graph/badge.svg?token=70BDRZY956)](https://codecov.io/github/flowdacity/tailback)
 
-Flowdacity Queue
+Tailback
 ================
 
-Flowdacity Queue (FQ) is a rate-limited job queue built on Redis. It stores jobs per queue type and queue id, enforces per-queue dequeue intervals, automatically requeues expired jobs, and exposes metrics to understand throughput and queue depth.
+Tailback is a flexible, open-source, rate-limited queuing system. Based on the [Leaky Bucket Algorithm](http://en.wikipedia.org/wiki/Leaky_bucket#The_Leaky_Bucket_Algorithm_as_a_Queue), Tailback lets you create queues dynamically and update their rate limits in real time.
 
 ## Features
 
-- Per-queue rate limiting using millisecond intervals.
-- Async and sync interfaces backed by Redis clients from redis-py.
-- Lua scripts for predictable queue behavior.
-- Automatic retries with configurable limits (including infinite retries).
-- Metrics for enqueue/dequeue counts and queue lengths.
-- Works with TCP or Unix socket Redis deployments and supports Redis Cluster.
+- Dynamic queues with no setup step.
+- Per-queue rate limits.
+- Live rate limit updates.
+- Automatic retries for unfinished jobs.
+- Simple queue metrics.
+- Async and sync Python support.
 
 ## Requirements
 
@@ -24,7 +24,7 @@ Flowdacity Queue (FQ) is a rate-limited job queue built on Redis. It stores jobs
 
 From PyPI:
 ```
-pip install flowdacity-queue
+pip install tailback
 ```
 
 From source (editable):
@@ -34,7 +34,7 @@ pip install -e .
 
 ## Configuration
 
-FQ accepts a simple config mapping. Intervals are in milliseconds.
+Tailback accepts a simple config mapping. Intervals are in milliseconds.
 ```python
 config = {
     "queue": {
@@ -74,16 +74,16 @@ For Unix socket connections, use `conn_type: "unix_sock"` and provide
 
 ## Async Usage
 
-Import `FQ` from the top-level package:
+Import `Tailback` from the top-level package:
 
 ```python
-from fq import FQ
+from tailback import Tailback
 ```
 
 ```python
 import asyncio
 import uuid
-from fq import FQ
+from tailback import Tailback
 
 
 async def main():
@@ -104,11 +104,11 @@ async def main():
         },
     }
 
-    fq = FQ(config)
-    await fq.initialize()  # connect to Redis and register Lua scripts
+    queue = Tailback(config)
+    await queue.initialize()  # connect to Redis and register Lua scripts
 
     job_id = str(uuid.uuid4())
-    await fq.enqueue(
+    await queue.enqueue(
         payload={"message": "hello, world"},
         interval=1000,            # ms between successful dequeues
         job_id=job_id,
@@ -116,16 +116,16 @@ async def main():
         queue_type="sms",
     )
 
-    job = await fq.dequeue(queue_type="sms")
+    job = await queue.dequeue(queue_type="sms")
     if job["status"] == "success":
         # ...process job["payload"]...
-        await fq.finish(
+        await queue.finish(
             queue_type="sms",
             queue_id=job["queue_id"],
             job_id=job["job_id"],
         )
 
-    await fq.close()
+    await queue.close()
 
 
 asyncio.run(main())
@@ -133,11 +133,11 @@ asyncio.run(main())
 
 ## Sync Usage
 
-Import `FQ` from `fq.sync`:
+Import `Tailback` from `tailback.sync`:
 
 ```python
 import uuid
-from fq.sync import FQ
+from tailback.sync import Tailback
 
 
 config = {
@@ -157,11 +157,11 @@ config = {
     },
 }
 
-fq = FQ(config)
-fq.initialize()
+queue = Tailback(config)
+queue.initialize()
 
 job_id = str(uuid.uuid4())
-fq.enqueue(
+queue.enqueue(
     payload={"message": "hello, world"},
     interval=1000,
     job_id=job_id,
@@ -169,25 +169,25 @@ fq.enqueue(
     queue_type="sms",
 )
 
-job = fq.dequeue(queue_type="sms")
+job = queue.dequeue(queue_type="sms")
 if job["status"] == "success":
-    fq.finish(
+    queue.finish(
         queue_type="sms",
         queue_id=job["queue_id"],
         job_id=job["job_id"],
     )
 
-fq.close()
+queue.close()
 ```
 
 ## Common Operations
 
-- `await fq.requeue()` — move expired jobs back onto their queues.
-- `await fq.interval(interval=5000, queue_id="user001", queue_type="sms")` — change a queue’s rate limit on the fly.
-- `await fq.metrics()` — global metrics; pass `queue_type` and/or `queue_id` for scoped stats and queue length.
-- `await fq.clear_queue(queue_type="sms", queue_id="user001", purge_all=True)` — drop queued jobs and their payload/interval metadata.
+- `await queue.requeue()` — move expired jobs back onto their queues.
+- `await queue.interval(interval=5000, queue_id="user001", queue_type="sms")` — change a queue’s rate limit on the fly.
+- `await queue.metrics()` — global metrics; pass `queue_type` and/or `queue_id` for scoped stats and queue length.
+- `await queue.clear_queue(queue_type="sms", queue_id="user001", purge_all=True)` — drop queued jobs and their payload/interval metadata.
 
-The same operations are available from `fq.sync.FQ` without `await`.
+The same operations are available from `tailback.sync.Tailback` without `await`.
 
 ## Development
 

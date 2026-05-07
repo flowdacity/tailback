@@ -58,7 +58,7 @@ def serialize_payload(payload):
 
 def deserialize_payload(payload):
     """Tries to deserialize the payload using msgpack."""
-    # Handle older FQ payloads as well (before py3 migration)
+    # Handle older Tailback payloads as well (before py3 migration)
     if payload.startswith(b'"') and payload.endswith(b'"'):
         return msgpack.unpackb(payload[1:-1], raw=False)
 

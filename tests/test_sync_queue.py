@@ -6,20 +6,20 @@ import time
 import unittest
 import uuid
 
-from fq import FQ as AsyncFQ
-from fq.exceptions import BadArgumentException
-from fq.sync import FQ
+from tailback import Tailback as AsyncTailback
+from tailback.exceptions import BadArgumentException
+from tailback.sync import Tailback
 from tests.config import build_test_config
 
 
-class SyncFQTest(unittest.TestCase):
+class SyncTailbackTest(unittest.TestCase):
     def setUp(self):
-        self.queue = FQ(build_test_config(queue={"key_prefix": "test_fq_sync"}))
+        self.queue = Tailback(build_test_config(queue={"key_prefix": "test_tailback_sync"}))
         self.queue.initialize()
         self.queue._r.flushdb()
         self.queue_type = "sms"
         self.queue_id = "johndoe"
-        self.payload = {"to": "1000000000", "message": "Hello, sync FQ"}
+        self.payload = {"to": "1000000000", "message": "Hello, sync Tailback"}
 
     def tearDown(self):
         if self.queue is not None and self.queue._r is not None:
@@ -30,12 +30,12 @@ class SyncFQTest(unittest.TestCase):
         return str(uuid.uuid4())
 
     def test_import_namespace(self):
-        from fq import FQ as ImportedAsyncFQ
-        from fq.sync import FQ as ImportedSyncFQ
+        from tailback import Tailback as ImportedAsyncTailback
+        from tailback.sync import Tailback as ImportedSyncTailback
 
-        self.assertIs(ImportedAsyncFQ, AsyncFQ)
-        self.assertIs(ImportedSyncFQ, FQ)
-        self.assertIsNot(ImportedAsyncFQ, ImportedSyncFQ)
+        self.assertIs(ImportedAsyncTailback, AsyncTailback)
+        self.assertIs(ImportedSyncTailback, Tailback)
+        self.assertIsNot(ImportedAsyncTailback, ImportedSyncTailback)
 
     def test_initialize_close_and_reload_scripts(self):
         self.assertIs(self.queue.redis_client(), self.queue._r)
@@ -92,11 +92,11 @@ class SyncFQTest(unittest.TestCase):
 
     def test_requeue_behavior(self):
         self.queue.close()
-        self.queue = FQ(
+        self.queue = Tailback(
             build_test_config(
                 queue={
                     "job_expire_interval": 20,
-                    "key_prefix": "test_fq_sync_requeue",
+                    "key_prefix": "test_tailback_sync_requeue",
                 },
             )
         )
@@ -247,7 +247,7 @@ class SyncFQTest(unittest.TestCase):
             return errors
 
         async def collect_async_errors():
-            queue = AsyncFQ(build_test_config(queue={"key_prefix": "test_fq_async"}))
+            queue = AsyncTailback(build_test_config(queue={"key_prefix": "test_tailback_async"}))
             await queue.initialize()
             await queue._r.flushdb()
             checks = [
@@ -291,9 +291,9 @@ class SyncFQTest(unittest.TestCase):
 
     def test_sync_async_interoperability(self):
         async def scenario():
-            config = build_test_config(queue={"key_prefix": "test_fq_sync_interop"})
-            async_queue = AsyncFQ(config)
-            sync_queue = FQ(config)
+            config = build_test_config(queue={"key_prefix": "test_tailback_sync_interop"})
+            async_queue = AsyncTailback(config)
+            sync_queue = Tailback(config)
 
             await async_queue.initialize()
             await asyncio.to_thread(sync_queue.initialize)

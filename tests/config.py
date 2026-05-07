@@ -10,7 +10,7 @@ TEST_UNIX_SOCKET_PATH = join(gettempdir(), "redis.sock")
 
 TEST_CONFIG = {
     "queue": {
-        "key_prefix": "test_fq",
+        "key_prefix": "test_tailback",
         "job_expire_interval": 5000,
         "job_requeue_interval": 5000,
         "default_job_requeue_limit": -1,

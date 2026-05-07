@@ -7,7 +7,7 @@ from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import ClusterNode as AsyncClusterNode
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 
-from fq.exceptions import FQException
+from tailback.exceptions import TailbackException
 
 
 def create_async_redis_client(redis_config):
@@ -37,7 +37,7 @@ def create_async_redis_client(redis_config):
             password=redis_config.password,
         )
 
-    raise FQException("Unknown redis conn_type: %s" % redis_config.conn_type)
+    raise TailbackException("Unknown redis conn_type: %s" % redis_config.conn_type)
 
 
 def create_sync_redis_client(redis_config):
@@ -65,12 +65,12 @@ def create_sync_redis_client(redis_config):
             password=redis_config.password,
         )
 
-    raise FQException("Unknown redis conn_type: %s" % redis_config.conn_type)
+    raise TailbackException("Unknown redis conn_type: %s" % redis_config.conn_type)
 
 
 async def validate_async_redis_connection(redis_client):
     if redis_client is None:
-        raise FQException("Redis client is not initialized")
+        raise TailbackException("Redis client is not initialized")
 
     ping = getattr(redis_client, "ping", None)
     if not callable(ping):
@@ -79,15 +79,15 @@ async def validate_async_redis_connection(redis_client):
     try:
         result = await ping()
     except Exception as exc:
-        raise FQException("Failed to connect to Redis: %s" % exc) from exc
+        raise TailbackException("Failed to connect to Redis: %s" % exc) from exc
 
     if result is False:
-        raise FQException("Failed to connect to Redis: ping returned False")
+        raise TailbackException("Failed to connect to Redis: ping returned False")
 
 
 def validate_sync_redis_connection(redis_client):
     if redis_client is None:
-        raise FQException("Redis client is not initialized")
+        raise TailbackException("Redis client is not initialized")
 
     ping = getattr(redis_client, "ping", None)
     if not callable(ping):
@@ -96,7 +96,7 @@ def validate_sync_redis_connection(redis_client):
     try:
         result = ping()
     except Exception as exc:
-        raise FQException("Failed to connect to Redis: %s" % exc) from exc
+        raise TailbackException("Failed to connect to Redis: %s" % exc) from exc
 
     if result is False:
-        raise FQException("Failed to connect to Redis: ping returned False")
+        raise TailbackException("Failed to connect to Redis: ping returned False")

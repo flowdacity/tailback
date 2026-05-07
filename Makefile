@@ -10,17 +10,17 @@ clean:
 	find . -name "*~" -delete
 	rm -rf dist build *.egg-info
 
-# Build package (requires: pip install build)
+# Build package
 build:
-	python -m build
+	uv run python -m build
 
 # Install locally built package
 install:
 	pip install --force-reinstall dist/*.whl
 
-# Uninstall FQ completely
+# Uninstall Tailback completely
 uninstall:
-	pip uninstall -y flowdacity-queue
+	pip uninstall -y tailback
 
 # Run tests — prefers pytest, falls back to python modules
 test: redis-up

@@ -1,4 +1,4 @@
--- script to enqueue a job into fq.
+-- script to enqueue a job into tailback.
 
 -- input:
 --     KEYS[1] - <key_prefix>

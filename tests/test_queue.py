@@ -3,17 +3,17 @@
 import unittest
 from datetime import date
 
-from fq import FQ
-from fq.exceptions import BadArgumentException
+from tailback import Tailback
+from tailback.exceptions import BadArgumentException
 from tests.config import build_test_config
 
 
-class FQTest(unittest.IsolatedAsyncioTestCase):
-    """The FQTest contains test cases which validate the FQ interface."""
+class TailbackTest(unittest.IsolatedAsyncioTestCase):
+    """The TailbackTest contains test cases which validate the Tailback interface."""
 
     # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
-        self.queue = FQ(build_test_config())
+        self.queue = Tailback(build_test_config())
         await self.queue.initialize()
 
         self.valid_queue_type = "5m5_qu-eue"

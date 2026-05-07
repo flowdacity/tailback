@@ -8,25 +8,25 @@ import msgpack
 from os.path import join
 from tempfile import gettempdir
 from unittest.mock import AsyncMock, MagicMock
-from fq import FQ
-from fq.exceptions import FQException
-from fq.utils import generate_epoch, deserialize_payload
+from tailback import Tailback
+from tailback.exceptions import TailbackException
+from tailback.utils import generate_epoch, deserialize_payload
 from tests.config import build_test_config
 
 
 NONEXISTENT_UNIX_SOCKET_PATH = join(gettempdir(), "redis_nonexistent.sock")
 
 
-class FQTestCase(unittest.IsolatedAsyncioTestCase):
+class TailbackTestCase(unittest.IsolatedAsyncioTestCase):
     """
-    `FQTestCase` contains the functional test cases
+    `TailbackTestCase` contains the functional test cases
     that validate the correctness of all the APIs exposed
-    by FQ.
+    by Tailback.
     """
 
     # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
-        self.queue = FQ(build_test_config())
+        self.queue = Tailback(build_test_config())
         # flush all the keys in the test db before starting test
         await self.queue.initialize()
         await self.queue._r.flushdb()
@@ -34,7 +34,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         self._test_queue_id = "johndoe"
         self._test_queue_type = "sms"
         self._test_payload_1 = {"to": "1000000000", "message": "Hello, world"}
-        self._test_payload_2 = {"to": "1000000001", "message": "Hello, FQ"}
+        self._test_payload_2 = {"to": "1000000001", "message": "Hello, Tailback"}
         self._test_requeue_limit_5 = 5
         self._test_requeue_limit_neg_1 = -1
         self._test_requeue_limit_0 = 0
@@ -1600,7 +1600,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(global_response["dequeue_counts"][old_1_timestamp_minute], 2)
         self.assertEqual(global_response["dequeue_counts"][old_2_timestamp_minute], 1)
 
-    async def test_fq_rate_limiting(self):
+    async def test_tailback_rate_limiting(self):
         job_id_1 = self._get_job_id()
         await self.queue.enqueue(
             payload=self._test_payload_1,
@@ -1733,17 +1733,17 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_initialize_public_method(self):
         """Test the public initialize() method."""
-        fq = FQ(build_test_config())
+        queue = Tailback(build_test_config())
         
         # Public initialize() should work
-        await fq.initialize()
+        await queue.initialize()
         
         # Verify initialization succeeded
-        self.assertIsNotNone(fq._r)
-        self.assertIsNotNone(fq._scripts.enqueue)
+        self.assertIsNotNone(queue._r)
+        self.assertIsNotNone(queue._scripts.enqueue)
         
         # Cleanup
-        await fq.close()
+        await queue.close()
 
     async def test_reload_lua_scripts(self):
         """Test reload_lua_scripts method."""
@@ -1794,24 +1794,24 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_properly_closes_connection(self):
         """Test close() method properly closes Redis connection."""
-        fq = FQ(build_test_config())
-        await fq.initialize()
+        queue = Tailback(build_test_config())
+        await queue.initialize()
         
-        self.assertIsNotNone(fq._r)
-        await fq.close()
-        self.assertIsNone(fq._r)
+        self.assertIsNotNone(queue._r)
+        await queue.close()
+        self.assertIsNone(queue._r)
 
     async def test_close_with_none_client(self):
         """Test close() when redis client is None."""
-        fq = FQ(build_test_config())
+        queue = Tailback(build_test_config())
         # Don't initialize, so _r is None
-        await fq.close()  # Should not crash
-        self.assertIsNone(fq._r)
+        await queue.close()  # Should not crash
+        self.assertIsNone(queue._r)
 
     async def test_initialize_unix_socket_connection(self):
         """Test initialization with Unix socket connection - tests line 59."""
         config = build_test_config(
-            queue={"key_prefix": "test_fq_unix"},
+            queue={"key_prefix": "test_tailback_unix"},
             redis={
                 "conn_type": "unix_sock",
                 "unix_socket_path": NONEXISTENT_UNIX_SOCKET_PATH,
@@ -1832,11 +1832,11 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
         # Patch Redis to intercept the initialization
         with unittest.mock.patch(
-            "fq.redis.AsyncRedis",
+            "tailback.redis.AsyncRedis",
             side_effect=mock_redis_constructor,
         ):
-            fq = FQ(config)
-            await fq.initialize()
+            queue = Tailback(config)
+            await queue.initialize()
 
             # Verify that Redis was initialized with unix_socket_path
             self.assertIn("unix_socket_path", redis_init_kwargs)
@@ -1845,16 +1845,16 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(int(redis_init_kwargs["db"]), 0)
 
-            await fq.close()
+            await queue.close()
 
     async def test_initialize_unknown_connection_type(self):
         """Test constructor validation with invalid connection type."""
         config = build_test_config(redis={"conn_type": "invalid_type"})
         with self.assertRaisesRegex(
-            FQException,
+            TailbackException,
             "Invalid config: redis.conn_type must be 'tcp_sock' or 'unix_sock'",
         ):
-            FQ(config)
+            Tailback(config)
 
     async def test_clear_queue_with_purge_all_and_string_job_uuid(self):
         """Test clear_queue with purge_all=True handles string job UUIDs - tests lines 464, 468."""
@@ -1909,7 +1909,7 @@ class FQTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_convert_to_str_with_mixed_types(self):
         """Test convert_to_str handles both bytes and strings."""
-        from fq.utils import convert_to_str
+        from tailback.utils import convert_to_str
         
         # Mixed bytes and string set
         mixed_set = {b"key1", "key2", b"key3"}

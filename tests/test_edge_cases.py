@@ -7,12 +7,12 @@ from contextlib import suppress
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fq import FQ
-from fq.config import FQConfig
-from fq.exceptions import BadArgumentException, FQException
-from fq.redis import create_async_redis_client, create_sync_redis_client
-from fq.responses import format_queue_ids
-from fq.utils import is_valid_identifier
+from tailback import Tailback
+from tailback.config import TailbackConfig
+from tailback.exceptions import BadArgumentException, TailbackException
+from tailback.redis import create_async_redis_client, create_sync_redis_client
+from tailback.responses import format_queue_ids
+from tailback.utils import is_valid_identifier
 from tests.config import build_test_config
 
 
@@ -133,70 +133,70 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
     # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncSetUp(self):
         self.config = build_test_config()
-        self.fq_instance = None
+        self.queue_instance = None
 
     # qlty-ignore(radarlint-python:python:S5899): unittest lifecycle hook.
     async def asyncTearDown(self):
         """Clean up Redis state and close connections after each test."""
-        # If a test initialized FQ with real Redis, clean up
-        if self.fq_instance is not None:
+        # If a test initialized Tailback with real Redis, clean up
+        if self.queue_instance is not None:
             with suppress(Exception):
-                if self.fq_instance._r is not None:
-                    await self.fq_instance._r.flushdb()
-                await self.fq_instance.close()
-            self.fq_instance = None
+                if self.queue_instance._r is not None:
+                    await self.queue_instance._r.flushdb()
+                await self.queue_instance.close()
+            self.queue_instance = None
 
     def test_invalid_config_type_raises(self):
-        with self.assertRaisesRegex(FQException, "Config must be a mapping"):
-            FQ("does-not-exist.conf")
+        with self.assertRaisesRegex(TailbackException, "Config must be a mapping"):
+            Tailback("does-not-exist.conf")
 
     def test_missing_required_config_section_raises(self):
         config = build_test_config()
         del config["queue"]
         with self.assertRaisesRegex(
-            FQException, "Config missing required sections: redis, queue"
+            TailbackException, "Config missing required sections: redis, queue"
         ):
-            FQ(config)
+            Tailback(config)
 
-    def test_fq_config_section_is_not_supported(self):
+    def test_tailback_config_section_is_not_supported(self):
         config = build_test_config()
-        config["fq"] = config.pop("queue")
+        config["tailback"] = config.pop("queue")
         with self.assertRaisesRegex(
-            FQException, "Config missing required sections: redis, queue"
+            TailbackException, "Config missing required sections: redis, queue"
         ):
-            FQ(config)
+            Tailback(config)
 
     async def test_initialize_fails_fast_on_bad_redis(self):
-        with patch("fq.redis.AsyncRedis", FakeRedisConnectionFailure):
-            fq = FQ(self.config)
-            with self.assertRaisesRegex(FQException, "Failed to connect to Redis"):
-                await fq.initialize()
+        with patch("tailback.redis.AsyncRedis", FakeRedisConnectionFailure):
+            queue = Tailback(self.config)
+            with self.assertRaisesRegex(TailbackException, "Failed to connect to Redis"):
+                await queue.initialize()
 
     async def test_cluster_initialization(self):
         """Covers clustered Redis path (queue.py lines 69-75, 104-106)."""
         config = build_test_config(
-            queue={"key_prefix": "test_fq_cluster"},
+            queue={"key_prefix": "test_tailback_cluster"},
             redis={
                 "clustered": True,
                 "password": "cluster-password",
             }
         )
-        with patch("fq.redis.AsyncRedisCluster", FakeCluster):
-            fq = FQ(config)
-            await fq.initialize()
-            self.assertIsInstance(fq.redis_client(), FakeCluster)
-            self.assertEqual(fq.redis_client().password, "cluster-password")
-            startup_node = fq.redis_client().startup_nodes[0]
+        with patch("tailback.redis.AsyncRedisCluster", FakeCluster):
+            queue = Tailback(config)
+            await queue.initialize()
+            self.assertIsInstance(queue.redis_client(), FakeCluster)
+            self.assertEqual(queue.redis_client().password, "cluster-password")
+            startup_node = queue.redis_client().startup_nodes[0]
             self.assertEqual(startup_node.host, "127.0.0.1")
             self.assertEqual(startup_node.port, 6379)
-            await fq.close()
+            await queue.close()
 
     def test_clustered_config_must_be_boolean(self):
         config = build_test_config(redis={"clustered": "true"})
         with self.assertRaisesRegex(
-            FQException, "Invalid config: redis.clustered must be a boolean"
+            TailbackException, "Invalid config: redis.clustered must be a boolean"
         ):
-            FQ(config)
+            Tailback(config)
 
     def test_unix_socket_clustered_config_must_be_boolean(self):
         config = build_test_config(
@@ -206,70 +206,70 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
             }
         )
         with self.assertRaisesRegex(
-            FQException, "Invalid config: redis.clustered must be a boolean"
+            TailbackException, "Invalid config: redis.clustered must be a boolean"
         ):
-            FQ(config)
+            Tailback(config)
 
     def test_missing_required_config_key_raises_with_path(self):
         config = build_test_config()
         del config["queue"]["key_prefix"]
-        with self.assertRaisesRegex(FQException, "Missing config: queue.key_prefix"):
-            FQ(config)
+        with self.assertRaisesRegex(TailbackException, "Missing config: queue.key_prefix"):
+            Tailback(config)
 
     def test_invalid_config_value_raises_with_path(self):
         config = build_test_config(queue={"job_expire_interval": "5000"})
         with self.assertRaisesRegex(
-            FQException,
+            TailbackException,
             "Invalid config: queue.job_expire_interval must be a positive integer",
         ):
-            FQ(config)
+            Tailback(config)
 
     def test_invalid_redis_port_range_raises(self):
         for port in (0, -1, 65536):
             with self.subTest(port=port):
                 config = build_test_config(redis={"port": port})
                 with self.assertRaisesRegex(
-                    FQException,
+                    TailbackException,
                     "Invalid config: redis.port must be an integer between 1 and 65535",
                 ):
-                    FQ(config)
+                    Tailback(config)
 
     async def test_dequeue_payload_none(self):
         """Covers dequeue branch where payload is None (queue.py line 212)."""
-        fq = FQ(self.config)
-        self.fq_instance = fq
-        await fq.initialize()
+        queue = Tailback(self.config)
+        self.queue_instance = queue
+        await queue.initialize()
         fake_dequeue = FakeLuaDequeue()
-        fq._scripts = SimpleNamespace(dequeue=fake_dequeue)
-        result = await fq.dequeue()
+        queue._scripts = SimpleNamespace(dequeue=fake_dequeue)
+        result = await queue.dequeue()
         self.assertEqual(result["status"], "failure")
         self.assertTrue(fake_dequeue.called)
 
     async def test_clear_queue_delete_only(self):
         """Covers clear_queue else branch (queue.py lines 499, 502)."""
-        fq = FQ(self.config)
-        self.fq_instance = fq
-        await fq.initialize()
-        await fq._r.flushdb()
-        response = await fq.clear_queue(queue_type="noqueue", queue_id="missing")
+        queue = Tailback(self.config)
+        self.queue_instance = queue
+        await queue.initialize()
+        await queue._r.flushdb()
+        response = await queue.clear_queue(queue_type="noqueue", queue_id="missing")
         self.assertEqual(response["status"], "Failure")
 
     async def test_close_fallback_paths(self):
         """Covers close() fallback paths (queue.py lines 528-549)."""
-        fq = FQ(self.config)
-        fq._r = FakeRedisForClose()
-        await fq.close()
-        self.assertIsNone(fq._r)
+        queue = Tailback(self.config)
+        queue._r = FakeRedisForClose()
+        await queue.close()
+        self.assertIsNone(queue._r)
 
     async def test_deep_status_calls_set(self):
         """Covers deep_status (queue.py line 420)."""
-        fq = FQ(self.config)
-        fq._r = FakeRedisForDeepStatus()
-        await fq.deep_status()
+        queue = Tailback(self.config)
+        queue._r = FakeRedisForDeepStatus()
+        await queue.deep_status()
         self.assertEqual(
-            fq._r.key_set,
+            queue._r.key_set,
             (
-                "fq:deep_status:{}".format(fq.config.queue.key_prefix),
+                "fq:deep_status:{}".format(queue.config.queue.key_prefix),
                 "sharq_deep_status",
             ),
         )
@@ -290,7 +290,7 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(queue_ids), 3)
 
     def test_redis_factories_pass_password_to_unix_socket_clients(self):
-        config = FQConfig.from_mapping(
+        config = TailbackConfig.from_mapping(
             build_test_config(
                 redis={
                     "conn_type": "unix_sock",
@@ -299,16 +299,16 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        with patch("fq.redis.AsyncRedis", RecordingRedisClient):
+        with patch("tailback.redis.AsyncRedis", RecordingRedisClient):
             async_client = create_async_redis_client(config.redis)
-        with patch("fq.redis.SyncRedis", RecordingRedisClient):
+        with patch("tailback.redis.SyncRedis", RecordingRedisClient):
             sync_client = create_sync_redis_client(config.redis)
 
         self.assertEqual(async_client.kwargs["password"], "socket-password")
         self.assertEqual(sync_client.kwargs["password"], "socket-password")
 
     def test_redis_factories_pass_password_to_cluster_clients(self):
-        config = FQConfig.from_mapping(
+        config = TailbackConfig.from_mapping(
             build_test_config(
                 redis={
                     "clustered": True,
@@ -317,9 +317,9 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        with patch("fq.redis.AsyncRedisCluster", RecordingRedisClient):
+        with patch("tailback.redis.AsyncRedisCluster", RecordingRedisClient):
             async_client = create_async_redis_client(config.redis)
-        with patch("fq.redis.SyncRedisCluster", RecordingRedisClient):
+        with patch("tailback.redis.SyncRedisCluster", RecordingRedisClient):
             sync_client = create_sync_redis_client(config.redis)
 
         self.assertEqual(async_client.kwargs["password"], "cluster-password")
@@ -327,26 +327,26 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
 
     async def test_clear_queue_purge_all_with_mixed_job_ids(self):
         """Covers purge_all loop branches (queue.py lines 463-468, 474-479)."""
-        fq = FQ(self.config)
-        fq._r = FakeRedisForClear()
-        response = await fq.clear_queue("qt", "qid", purge_all=True)
+        queue = Tailback(self.config)
+        queue._r = FakeRedisForClear()
+        response = await queue.clear_queue("qt", "qid", purge_all=True)
         self.assertEqual(response["status"], "Success")
-        self.assertTrue(fq._r.pipe.executed)
+        self.assertTrue(queue._r.pipe.executed)
 
     async def test_get_queue_length_invalid_params(self):
         """Covers validation branches (queue.py lines 499, 502)."""
-        fq = FQ(self.config)
+        queue = Tailback(self.config)
         with self.assertRaises(BadArgumentException):
-            await fq.get_queue_length("bad type", "qid")
+            await queue.get_queue_length("bad type", "qid")
         with self.assertRaises(BadArgumentException):
-            await fq.get_queue_length("qtype", "bad id")
+            await queue.get_queue_length("qtype", "bad id")
 
     async def test_deep_status_real_redis(self):
         """Covers deep_status with real redis (queue.py line 420)."""
-        fq = FQ(self.config)
-        self.fq_instance = fq
-        await fq.initialize()
-        result = await fq.deep_status()
+        queue = Tailback(self.config)
+        self.queue_instance = queue
+        await queue.initialize()
+        result = await queue.deep_status()
         self.assertTrue(result)
 
 

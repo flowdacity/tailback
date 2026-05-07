@@ -3,8 +3,8 @@
 
 from dataclasses import dataclass
 
-from fq.exceptions import BadArgumentException
-from fq.utils import (
+from tailback.exceptions import BadArgumentException
+from tailback.utils import (
     is_valid_identifier,
     is_valid_interval,
     is_valid_requeue_limit,

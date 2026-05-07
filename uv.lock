@@ -242,7 +242,7 @@ wheels = [
 ]
 
 [[package]]
-name = "flowdacity-queue"
+name = "tailback"
 source = { editable = "." }
 dependencies = [
     { name = "msgpack" },

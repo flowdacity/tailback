@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (c) 2025 Flowdacity Development Team. See LICENSE.txt for details.
 
-from fq.utils import convert_to_str, deserialize_payload
+from tailback.utils import convert_to_str, deserialize_payload
 
 
 def decode_redis_value(value):

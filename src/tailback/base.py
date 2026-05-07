@@ -3,18 +3,18 @@
 
 from dataclasses import dataclass
 
-from fq.config import FQConfig
-from fq.exceptions import BadArgumentException
-from fq.keys import RedisKeys
-from fq.responses import (
+from tailback.config import TailbackConfig
+from tailback.exceptions import BadArgumentException
+from tailback.keys import RedisKeys
+from tailback.responses import (
     decode_redis_value,
     format_dequeue_response,
     format_metrics_counts,
     format_queue_ids,
     format_queue_types,
 )
-from fq.utils import generate_epoch
-from fq.validators import (
+from tailback.utils import generate_epoch
+from tailback.validators import (
     validate_clear_queue_arguments,
     validate_dequeue_arguments,
     validate_enqueue_arguments,
@@ -39,13 +39,13 @@ class ClearQueuePlan:
         return "%s:%s:%s" % (self.queue_type, self.queue_id, job_id)
 
 
-class BaseFQ(object):
-    """Shared non-I/O behavior for async and sync FQ clients."""
+class BaseTailback(object):
+    """Shared non-I/O behavior for async and sync Tailback clients."""
 
     def __init__(self, config):
         self._r = None
         self._scripts = None
-        self.config = FQConfig.from_mapping(config)
+        self.config = TailbackConfig.from_mapping(config)
         self._keys = RedisKeys(self.config.queue.key_prefix)
 
         self._key_prefix = self.config.queue.key_prefix
